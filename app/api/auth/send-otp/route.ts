@@ -27,7 +27,6 @@ export async function POST(req: Request) {
 
     // Validation per OTP purpose:
     if (type === "register") {
-      // For registration: user MUST NOT exist yet
       if (existingUser) {
         return NextResponse.json(
           { success: false, message: "An account with this email already exists. Please sign in instead." },
@@ -35,7 +34,6 @@ export async function POST(req: Request) {
         );
       }
     } else if (type === "forgot_password") {
-      // For password reset: user MUST exist
       if (!existingUser) {
         return NextResponse.json(
           { success: false, message: "No account found with this email address." },
@@ -43,7 +41,6 @@ export async function POST(req: Request) {
         );
       }
     } else if (type === "auth") {
-      // For OTP sign in: user MUST exist
       if (!existingUser) {
         return NextResponse.json(
           { success: false, message: "No account found with this email. Please register first using the Register tab." },
@@ -56,7 +53,15 @@ export async function POST(req: Request) {
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     // Save OTP to database with 3-minute expiration
-    await createOtp(cleanEmail, otpCode, type);
+    try {
+      await createOtp(cleanEmail, otpCode, type);
+    } catch (dbErr: any) {
+      console.error("[send-otp DB Error]:", dbErr);
+      return NextResponse.json(
+        { success: false, message: "Database error while storing verification code. Please try again." },
+        { status: 500 }
+      );
+    }
 
     // Dispatch Email via Resend API
     const resendApiKey = process.env.RESEND_API_KEY;
@@ -143,36 +148,30 @@ export async function POST(req: Request) {
 
         if (resendResult.data?.id) {
           emailDelivered = true;
+          console.log(`[Resend Success] Email sent to ${cleanEmail}, ID: ${resendResult.data.id}`);
         } else if (resendResult.error) {
-          console.error("Resend API Delivery Error:", resendResult.error);
+          console.error("[Resend API Error]:", resendResult.error);
           deliveryErrorMessage = resendResult.error.message;
         }
       } catch (err: any) {
-        console.error("Resend Execution Error:", err);
-        deliveryErrorMessage = err.message || "Failed to reach Resend email service.";
+        console.error("[Resend Exception]:", err);
+        deliveryErrorMessage = err.message || "Failed to contact Resend API.";
       }
+    } else {
+      console.log(`[DEV OTP Console Output] Code for ${cleanEmail} (${type}): ${otpCode}`);
     }
-
-    // Always log OTP to terminal console in development
-    console.log(`\n========================================`);
-    console.log(`[VERIFICATION CODE DISPATCH]`);
-    console.log(`Recipient: ${cleanEmail}`);
-    console.log(`OTP Code:  ${otpCode}`);
-    console.log(`Type:      ${type}`);
-    console.log(`Delivered: ${emailDelivered ? "Yes (via Resend)" : "Console Fallback"}`);
-    if (deliveryErrorMessage) console.log(`Note:      ${deliveryErrorMessage}`);
-    console.log(`========================================\n`);
 
     return NextResponse.json({
       success: true,
       message: emailDelivered
         ? "3-minute verification code sent! Please check your email inbox."
-        : `Verification code generated! (Dev mode OTP: ${otpCode})`,
+        : "Verification code generated! Please check your inbox or spam folder.",
       debugOtp: process.env.NODE_ENV !== "production" ? otpCode : undefined,
     });
   } catch (error: any) {
+    console.error("[FATAL send-otp ROUTE ERROR]:", error);
     return NextResponse.json(
-      { success: false, message: "We encountered an issue generating your verification code. Please try again." },
+      { success: false, message: `Verification code service error: ${error?.message || "Internal server error"}` },
       { status: 500 }
     );
   }

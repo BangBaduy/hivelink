@@ -39,12 +39,17 @@ export function isNeonConfigured(): boolean {
   return !!process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith("postgres");
 }
 
+let cachedSql: ReturnType<typeof neon> | null = null;
+
 /**
  * Get SQL query executor using @neondatabase/serverless
  */
 export function getSql() {
   if (isNeonConfigured()) {
-    return neon(process.env.DATABASE_URL!);
+    if (!cachedSql) {
+      cachedSql = neon(process.env.DATABASE_URL!);
+    }
+    return cachedSql;
   }
   return null;
 }
@@ -63,11 +68,11 @@ export async function createOtp(email: string, code: string, type: string = "aut
   const createdAt = new Date().toISOString();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       INSERT INTO otps (email, code, type, expires_at, verified)
       VALUES (${email.toLowerCase()}, ${code}, ${type}, NOW() + INTERVAL '3 minutes', FALSE)
       RETURNING id, email, code, type, expires_at, verified, created_at;
-    `;
+    `) as Record<string, any>[];
     const row = rows[0];
     return {
       id: row.id,
@@ -101,7 +106,7 @@ export async function verifyOtpCode(email: string, code: string, type: string = 
   const cleanEmail = email.toLowerCase().trim();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       SELECT id, code, expires_at, verified
       FROM otps
       WHERE LOWER(email) = ${cleanEmail}
@@ -111,7 +116,7 @@ export async function verifyOtpCode(email: string, code: string, type: string = 
         AND expires_at > NOW()
       ORDER BY created_at DESC
       LIMIT 1;
-    `;
+    `) as any[];
 
     if (rows.length === 0) {
       return false;
@@ -151,12 +156,12 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
   const cleanEmail = email.toLowerCase().trim();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       SELECT id, email, password_hash, created_at
       FROM users
       WHERE LOWER(email) = ${cleanEmail}
       LIMIT 1;
-    `;
+    `) as any[];
     if (rows.length === 0) return null;
     const r = rows[0];
     return {
@@ -178,11 +183,11 @@ export async function createUserWithPassword(email: string, passwordHash: string
   const cleanEmail = email.toLowerCase().trim();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       INSERT INTO users (email, password_hash)
       VALUES (${cleanEmail}, ${passwordHash})
       RETURNING id, email, password_hash, created_at;
-    `;
+    `) as any[];
     const r = rows[0];
     return {
       id: r.id,
@@ -211,12 +216,12 @@ export async function updateUserPassword(email: string, newPasswordHash: string)
   const cleanEmail = email.toLowerCase().trim();
 
   if (sql) {
-    const result = await sql`
+    const result = (await sql`
       UPDATE users
       SET password_hash = ${newPasswordHash}
       WHERE LOWER(email) = ${cleanEmail}
       RETURNING id;
-    `;
+    `) as any[];
     return result.length > 0;
   } else {
     const user = Array.from(memoryUsers.values()).find((u) => u.email.toLowerCase() === cleanEmail);
@@ -239,11 +244,11 @@ export async function findOrCreateUserByEmail(email: string): Promise<UserRecord
   const cleanEmail = email.toLowerCase().trim();
 
   if (sql) {
-    const created = await sql`
+    const created = (await sql`
       INSERT INTO users (email)
       VALUES (${cleanEmail})
       RETURNING id, email, password_hash, created_at;
-    `;
+    `) as any[];
     return {
       id: created[0].id,
       email: created[0].email,
@@ -269,9 +274,9 @@ export async function getUserById(id: string): Promise<UserRecord | null> {
   const sql = getSql();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       SELECT id, email, password_hash, created_at FROM users WHERE id = ${id} LIMIT 1;
-    `;
+    `) as any[];
     if (rows.length === 0) return null;
     return {
       id: rows[0].id,
@@ -292,12 +297,12 @@ export async function getLinkBySlug(slug: string): Promise<UrlRecord | null> {
   const sql = getSql();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       SELECT id, user_id, original_url, short_slug, clicks, created_at
       FROM urls
       WHERE short_slug = ${slug}
       LIMIT 1;
-    `;
+    `) as any[];
     if (rows.length === 0) return null;
     const r = rows[0];
     return {
@@ -339,11 +344,11 @@ export async function createShortUrl(
   const now = new Date().toISOString();
 
   if (sql) {
-    const rows = await sql`
+    const rows = (await sql`
       INSERT INTO urls (original_url, short_slug, user_id)
       VALUES (${originalUrl}, ${shortSlug}, ${userId})
       RETURNING id, user_id, original_url, short_slug, clicks, created_at;
-    `;
+    `) as any[];
     const r = rows[0];
     return {
       id: r.id,
@@ -383,22 +388,22 @@ export async function getUserLinks(limitOrUserId?: number | string | null, userI
   const sql = getSql();
 
   if (sql) {
-    let rows;
+    let rows: any[];
     if (userId) {
-      rows = await sql`
+      rows = (await sql`
         SELECT id, user_id, original_url, short_slug, clicks, created_at
         FROM urls
         WHERE user_id = ${userId}
         ORDER BY created_at DESC
         LIMIT ${limit};
-      `;
+      `) as any[];
     } else {
-      rows = await sql`
+      rows = (await sql`
         SELECT id, user_id, original_url, short_slug, clicks, created_at
         FROM urls
         ORDER BY created_at DESC
         LIMIT ${limit};
-      `;
+      `) as any[];
     }
 
     return rows.map((r) => ({
@@ -424,11 +429,11 @@ export async function deleteUserLink(id: string, userId: string): Promise<boolea
   const sql = getSql();
 
   if (sql) {
-    const result = await sql`
+    const result = (await sql`
       DELETE FROM urls
       WHERE id = ${id} AND user_id = ${userId}
       RETURNING id;
-    `;
+    `) as any[];
     return result.length > 0;
   } else {
     for (const [slug, record] of memoryUrls.entries()) {
