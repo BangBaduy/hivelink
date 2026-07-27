@@ -23,35 +23,42 @@ export async function POST(req: Request) {
       );
     }
 
-    // If type is forgot_password, check if user exists first
-    if (type === "forgot_password") {
-      const existingUser = await getUserByEmail(cleanEmail);
+    const existingUser = await getUserByEmail(cleanEmail);
+
+    // Validation per OTP purpose:
+    if (type === "register") {
+      // For registration: user MUST NOT exist yet
+      if (existingUser) {
+        return NextResponse.json(
+          { success: false, message: "An account with this email already exists. Please sign in instead." },
+          { status: 409 }
+        );
+      }
+    } else if (type === "forgot_password") {
+      // For password reset: user MUST exist
       if (!existingUser) {
         return NextResponse.json(
           { success: false, message: "No account found with this email address." },
           { status: 404 }
         );
       }
-    }
-
-    // If type is auth (OTP sign-in), also require an existing account
-    if (type === "auth") {
-      const existingUser = await getUserByEmail(cleanEmail);
+    } else if (type === "auth") {
+      // For OTP sign in: user MUST exist
       if (!existingUser) {
         return NextResponse.json(
-          { success: false, message: "No account found with this email. Please create an account first using the Register tab." },
+          { success: false, message: "No account found with this email. Please register first." },
           { status: 404 }
         );
       }
     }
 
-    // Generate cryptographically random 6-digit OTP code
+    // Generate 6-digit OTP code
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Store in database with 3-minute expiration
+    // Save OTP to database with 3-minute expiration
     await createOtp(cleanEmail, otpCode, type);
 
-    // Send Email via Resend API
+    // Dispatch Email via Resend API
     const resendApiKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.RESEND_FROM_EMAIL || "no-reply@upvance.site";
     const sender = `HiVE! <${fromEmail}>`;
@@ -59,13 +66,23 @@ export async function POST(req: Request) {
     const subject =
       type === "forgot_password"
         ? "HiVE! - Password Reset Verification Code"
-        : "Welcome, HiVE! - Your 3-Minute Verification Code";
+        : type === "register"
+        ? "HiVE! - Account Registration Verification Code"
+        : "HiVE! - Sign In Verification Code";
 
-    const titleText = type === "forgot_password" ? "Reset Your Password" : "Welcome to HiVE!";
+    const titleText =
+      type === "forgot_password"
+        ? "Reset Your Password"
+        : type === "register"
+        ? "Verify Your Email Address"
+        : "Sign In to HiVE!";
+
     const bodyText =
       type === "forgot_password"
-        ? "Use the 6-digit verification code below to reset your HiVE! account password."
-        : "Use the 6-digit verification code below to complete your authentication.";
+        ? "Use the 6-digit code below to reset your password."
+        : type === "register"
+        ? "Use the 6-digit code below to complete your account registration."
+        : "Use the 6-digit code below to complete your sign in.";
 
     if (resendApiKey) {
       try {
@@ -92,7 +109,7 @@ export async function POST(req: Request) {
                     <p style="margin: 0 0 28px 0; color: #64748B; font-size: 15px; line-height: 1.5;">${bodyText}</p>
 
                     <div style="background-color: #FDFBF7; border: 2px dashed #10B981; border-radius: 12px; padding: 20px; margin-bottom: 28px;">
-                      <span style="font-family: monospace, monospace; font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1E293B; display: inline-block;">
+                      <span style="font-family: monospace; font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1E293B; display: inline-block;">
                         ${otpCode}
                       </span>
                     </div>
@@ -114,14 +131,26 @@ export async function POST(req: Request) {
           </html>
         `;
 
-        await resend.emails.send({
+        const resendResult = await resend.emails.send({
           from: sender,
           to: [cleanEmail],
           subject,
           html: htmlContent,
         });
+
+        if (resendResult.error) {
+          console.error("Resend API delivery error:", resendResult.error);
+          return NextResponse.json(
+            { success: false, message: `Email delivery failed: ${resendResult.error.message}` },
+            { status: 400 }
+          );
+        }
       } catch (err: any) {
-        console.error("Resend send error:", err);
+        console.error("Resend execution error:", err);
+        return NextResponse.json(
+          { success: false, message: "Email delivery service unavailable. Please check your network." },
+          { status: 500 }
+        );
       }
     } else {
       console.log(`[DEV OTP] Code for ${cleanEmail} (${type}): ${otpCode}`);
@@ -129,7 +158,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Verification code sent! Please check your inbox.",
+      message: "3-minute verification code sent! Please check your email inbox.",
     });
   } catch (error: any) {
     return NextResponse.json(

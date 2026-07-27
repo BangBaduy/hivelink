@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
-import { getUserByEmail, createUserWithPassword } from "@/lib/db";
+import { getUserByEmail, createUserWithPassword, verifyOtpCode } from "@/lib/db";
 import { evaluatePasswordStrength, hashPassword } from "@/lib/security";
 import { signSessionToken, buildSessionCookieHeader } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, password } = body;
+    const { email, password, code } = body;
 
-    if (!email || !password || typeof email !== "string" || typeof password !== "string") {
+    if (!email || !password || !code || typeof email !== "string" || typeof password !== "string" || typeof code !== "string") {
       return NextResponse.json(
-        { success: false, message: "Please provide both an email address and a strong password." },
+        { success: false, message: "Please enter your email, strong password, and 6-digit verification code." },
         { status: 400 }
       );
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
+    const cleanCode = code.trim();
+
+    if (cleanCode.length !== 6) {
       return NextResponse.json(
-        { success: false, message: "Please enter a valid email address." },
+        { success: false, message: "Verification code must be exactly 6 digits." },
         { status: 400 }
       );
     }
@@ -42,6 +43,15 @@ export async function POST(req: Request) {
       );
     }
 
+    // CRITICAL ANTI-SPAM REQUIREMENT: Verify OTP code (type: 'register')
+    const isValidOtp = await verifyOtpCode(cleanEmail, cleanCode, "register");
+    if (!isValidOtp) {
+      return NextResponse.json(
+        { success: false, message: "Invalid or expired verification code. Please request a new code." },
+        { status: 400 }
+      );
+    }
+
     // Hash password and create user
     const hashedPassword = hashPassword(password);
     const user = await createUserWithPassword(cleanEmail, hashedPassword);
@@ -56,7 +66,7 @@ export async function POST(req: Request) {
 
     const response = NextResponse.json({
       success: true,
-      message: "Account created successfully!",
+      message: "Account created and verified successfully!",
       user: {
         id: user.id,
         email: user.email,

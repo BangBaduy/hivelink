@@ -229,7 +229,7 @@ export default function HiveApp() {
   // ----------------------------------------------------
   // AUTHENTICATION HANDLERS
   // ----------------------------------------------------
-  const handleSendOtp = async (type: "auth" | "forgot_password" = "auth") => {
+  const handleSendOtp = async (type: "auth" | "forgot_password" | "register" = "auth") => {
     setAuthError("");
     setAuthSuccessMsg("");
 
@@ -320,6 +320,12 @@ export default function HiveApp() {
       return;
     }
 
+    const code = otpDigits.join("");
+    if (code.length !== 6) {
+      setAuthError("Please enter all 6 digits of your verification code.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -329,6 +335,7 @@ export default function HiveApp() {
         body: JSON.stringify({
           email: emailInput.trim(),
           password: passwordInput,
+          code,
         }),
       });
 
@@ -342,7 +349,7 @@ export default function HiveApp() {
 
       setUser(data.user);
       setShowAuthModal(false);
-      triggerToast("Account created successfully!");
+      triggerToast("Account created and verified successfully!");
       fetchUserLinks();
     } catch {
       setAuthError("Registration failed. Please check your connection.");
@@ -1098,107 +1105,156 @@ export default function HiveApp() {
               </form>
             )}
 
-            {/* TAB 3: Password Registration (With Password Strength Indicator) */}
+            {/* TAB 3: Password Registration (With Email OTP Verification & Strength Meter) */}
             {authTab === "password_register" && (
-              <form onSubmit={handlePasswordRegister} className="space-y-4">
+              <div className="space-y-4">
                 <div className="text-center space-y-1">
                   <h3 className="text-lg font-bold text-slate-900">Create HiVE! Account</h3>
+                  <p className="text-xs text-slate-500">
+                    {!otpSent
+                      ? "Enter your email and strong password to receive a 3-minute verification code."
+                      : `Enter the 6-digit code sent to ${emailInput}`}
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder="name@domain.com"
-                    required
-                    className="w-full px-4 py-2.5 bg-[#FDFBF7] border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={passwordInput}
-                      onChange={(e) => setPasswordInput(e.target.value)}
-                      placeholder="Min. 8 characters"
-                      required
-                      className="w-full pl-4 pr-10 py-2.5 bg-[#FDFBF7] border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-emerald-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Password Strength Meter */}
-                {passwordInput && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs animate-slide-up">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-600">Password Strength:</span>
-                      <span
-                        className={`font-extrabold uppercase text-[11px] px-2 py-0.5 rounded-md ${
-                          passwordStrength.label === "Strong"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : passwordStrength.label === "Medium"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {passwordStrength.label}
-                      </span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${
-                          passwordStrength.label === "Strong"
-                            ? "w-full bg-emerald-500"
-                            : passwordStrength.label === "Medium"
-                            ? "w-2/3 bg-amber-500"
-                            : "w-1/3 bg-red-500"
-                        }`}
+                {!otpSent ? (
+                  <form onSubmit={(e) => { e.preventDefault(); handleSendOtp("register"); }} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="name@domain.com"
+                        required
+                        className="w-full px-4 py-2.5 bg-[#FDFBF7] border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-emerald-500"
                       />
                     </div>
 
-                    {/* Requirements Checklist */}
-                    <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600 pt-1">
-                      <div className={`flex items-center space-x-1 ${passwordStrength.checks.minLength ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
-                        <span>{passwordStrength.checks.minLength ? "✓" : "○"} 8+ characters</span>
-                      </div>
-                      <div className={`flex items-center space-x-1 ${passwordStrength.checks.hasNumber ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
-                        <span>{passwordStrength.checks.hasNumber ? "✓" : "○"} Number (0-9)</span>
-                      </div>
-                      <div className={`flex items-center space-x-1 ${passwordStrength.checks.hasUppercase ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
-                        <span>{passwordStrength.checks.hasUppercase ? "✓" : "○"} Uppercase (A-Z)</span>
-                      </div>
-                      <div className={`flex items-center space-x-1 ${passwordStrength.checks.hasLowercase ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
-                        <span>{passwordStrength.checks.hasLowercase ? "✓" : "○"} Lowercase (a-z)</span>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={passwordInput}
+                          onChange={(e) => setPasswordInput(e.target.value)}
+                          placeholder="Min. 8 characters"
+                          required
+                          className="w-full pl-4 pr-10 py-2.5 bg-[#FDFBF7] border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {authError && (
-                  <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">{authError}</p>
-                )}
+                    {/* Password Strength Meter */}
+                    {passwordInput && (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs animate-slide-up">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-slate-600">Password Strength:</span>
+                          <span
+                            className={`font-extrabold uppercase text-[11px] px-2 py-0.5 rounded-md ${
+                              passwordStrength.label === "Strong"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : passwordStrength.label === "Medium"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {passwordStrength.label}
+                          </span>
+                        </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !passwordStrength.valid}
-                  className="w-full py-3 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center disabled:opacity-50"
-                >
-                  {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Create Account</span>}
-                </button>
-              </form>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              passwordStrength.label === "Strong"
+                                ? "w-full bg-emerald-500"
+                                : passwordStrength.label === "Medium"
+                                ? "w-2/3 bg-amber-500"
+                                : "w-1/3 bg-red-500"
+                            }`}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600 pt-1">
+                          <div className={`flex items-center space-x-1 ${passwordStrength.checks.minLength ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
+                            <span>{passwordStrength.checks.minLength ? "✓" : "○"} 8+ characters</span>
+                          </div>
+                          <div className={`flex items-center space-x-1 ${passwordStrength.checks.hasNumber ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
+                            <span>{passwordStrength.checks.hasNumber ? "✓" : "○"} Number (0-9)</span>
+                          </div>
+                          <div className={`flex items-center space-x-1 ${passwordStrength.checks.hasUppercase ? "text-emerald-700 font-semibold" : "text-slate-400"}`}>
+                            <span>{passwordStrength.checks.hasUppercase ? "✓" : "○"} Uppercase (A-Z)</span>
+                          </div>
+                          <div className={`flex items-center space-x-1 ${passwordStrength.checks.hasLowercase ? "text-emerald-700 font-semibold" : "text-slate-400 font-normal"}`}>
+                            <span>{passwordStrength.checks.hasLowercase ? "✓" : "○"} Lowercase (a-z)</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {authError && (
+                      <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">{authError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || !passwordStrength.valid}
+                      className="w-full py-3 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center disabled:opacity-50"
+                    >
+                      {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Send Verification Code</span>}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handlePasswordRegister} className="space-y-4">
+                    <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800">
+                      <div className="flex items-center space-x-1.5">
+                        <Clock className="w-4 h-4 text-emerald-600 animate-pulse" />
+                        <span>Code Expires In:</span>
+                      </div>
+                      <span className="font-mono text-sm font-bold text-emerald-900">{formatTimer(otpTimer)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-center space-x-2">
+                      {otpDigits.map((digit, idx) => (
+                        <input
+                          key={idx}
+                          ref={(el) => { otpInputRefs.current[idx] = el; }}
+                          type="text"
+                          maxLength={1}
+                          value={digit}
+                          onChange={(e) => {
+                            if (!/^\d*$/.test(e.target.value)) return;
+                            const newDigits = [...otpDigits];
+                            newDigits[idx] = e.target.value.slice(-1);
+                            setOtpDigits(newDigits);
+                            if (e.target.value && idx < 5) otpInputRefs.current[idx + 1]?.focus();
+                          }}
+                          className="w-11 h-13 text-center text-xl font-bold bg-[#FDFBF7] border border-slate-200 rounded-xl focus:bg-white focus:border-emerald-500"
+                        />
+                      ))}
+                    </div>
+
+                    {authError && (
+                      <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200 text-center">{authError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-3 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center disabled:opacity-50"
+                    >
+                      {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Verify & Create Account</span>}
+                    </button>
+                  </form>
+                )}
+              </div>
             )}
 
             {/* TAB 4: Forgot Password Flow */}
