@@ -1218,12 +1218,19 @@ export default function HiveApp() {
                   </form>
                 ) : (
                   <form onSubmit={handlePasswordRegister} className="space-y-4">
-                    <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800">
+                    {authSuccessMsg && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 space-y-1">
+                        <p className="font-semibold text-center">{authSuccessMsg}</p>
+                        <p className="text-[11px] text-emerald-600 text-center">If not found in Inbox, please check your Spam / Junk folder.</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between px-3.5 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
                       <div className="flex items-center space-x-1.5">
                         <Clock className="w-4 h-4 text-emerald-600 animate-pulse" />
                         <span>Code Expires In:</span>
                       </div>
-                      <span className="font-mono text-sm font-bold text-emerald-900">{formatTimer(otpTimer)}</span>
+                      <span className="font-mono text-sm font-bold text-slate-900">{formatTimer(otpTimer)}</span>
                     </div>
 
                     <div className="flex items-center justify-center space-x-2">
@@ -1257,6 +1264,25 @@ export default function HiveApp() {
                     >
                       {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Verify & Create Account</span>}
                     </button>
+
+                    <div className="flex items-center justify-between pt-2 text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setOtpSent(false)}
+                        className="text-slate-500 hover:text-slate-700 underline"
+                      >
+                        ← Edit Email / Password
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSendOtp("register")}
+                        disabled={isSubmitting || otpTimer > 150}
+                        className="text-emerald-600 hover:text-emerald-700 font-bold disabled:opacity-40"
+                      >
+                        Resend Code {otpTimer > 150 ? `(${otpTimer - 150}s)` : ""}
+                      </button>
+                    </div>
                   </form>
                 )}
               </div>
