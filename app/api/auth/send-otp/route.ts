@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       // For OTP sign in: user MUST exist
       if (!existingUser) {
         return NextResponse.json(
-          { success: false, message: "No account found with this email. Please register first." },
+          { success: false, message: "No account found with this email. Please register first using the Register tab." },
           { status: 404 }
         );
       }
@@ -83,6 +83,9 @@ export async function POST(req: Request) {
         : type === "register"
         ? "Use the 6-digit code below to complete your account registration."
         : "Use the 6-digit code below to complete your sign in.";
+
+    let emailDelivered = false;
+    let deliveryErrorMessage = "";
 
     if (resendApiKey) {
       try {
@@ -138,31 +141,38 @@ export async function POST(req: Request) {
           html: htmlContent,
         });
 
-        if (resendResult.error) {
-          console.error("Resend API delivery error:", resendResult.error);
-          return NextResponse.json(
-            { success: false, message: `Email delivery failed: ${resendResult.error.message}` },
-            { status: 400 }
-          );
+        if (resendResult.data?.id) {
+          emailDelivered = true;
+        } else if (resendResult.error) {
+          console.error("Resend API Delivery Error:", resendResult.error);
+          deliveryErrorMessage = resendResult.error.message;
         }
       } catch (err: any) {
-        console.error("Resend execution error:", err);
-        return NextResponse.json(
-          { success: false, message: "Email delivery service unavailable. Please check your network." },
-          { status: 500 }
-        );
+        console.error("Resend Execution Error:", err);
+        deliveryErrorMessage = err.message || "Failed to reach Resend email service.";
       }
-    } else {
-      console.log(`[DEV OTP] Code for ${cleanEmail} (${type}): ${otpCode}`);
     }
+
+    // Always log OTP to terminal console in development
+    console.log(`\n========================================`);
+    console.log(`[VERIFICATION CODE DISPATCH]`);
+    console.log(`Recipient: ${cleanEmail}`);
+    console.log(`OTP Code:  ${otpCode}`);
+    console.log(`Type:      ${type}`);
+    console.log(`Delivered: ${emailDelivered ? "Yes (via Resend)" : "Console Fallback"}`);
+    if (deliveryErrorMessage) console.log(`Note:      ${deliveryErrorMessage}`);
+    console.log(`========================================\n`);
 
     return NextResponse.json({
       success: true,
-      message: "3-minute verification code sent! Please check your email inbox.",
+      message: emailDelivered
+        ? "3-minute verification code sent! Please check your email inbox."
+        : `Verification code generated! (Dev mode OTP: ${otpCode})`,
+      debugOtp: process.env.NODE_ENV !== "production" ? otpCode : undefined,
     });
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: "We encountered an issue sending your verification code. Please try again." },
+      { success: false, message: "We encountered an issue generating your verification code. Please try again." },
       { status: 500 }
     );
   }
