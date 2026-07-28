@@ -28,6 +28,9 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { evaluatePasswordStrength, PasswordStrengthResult } from "@/lib/security";
@@ -95,6 +98,12 @@ export default function HiveApp() {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
 
+  // Theme State (Light / Dark / System)
+  type ThemeMode = "light" | "dark" | "system";
+  const [theme, setTheme] = useState<ThemeMode>("system");
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Password strength score
@@ -102,6 +111,53 @@ export default function HiveApp() {
 
   useEffect(() => {
     checkSession();
+
+    // Theme initialization
+    const savedTheme = (localStorage.getItem("hive_theme") as ThemeMode) || "system";
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
+  }, []);
+
+  const applyTheme = (mode: ThemeMode) => {
+    const root = document.documentElement;
+    if (mode === "dark") {
+      root.classList.add("dark");
+    } else if (mode === "light") {
+      root.classList.remove("dark");
+    } else {
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        root.classList.add("dark");
+      } else {
+        root.classList.remove("dark");
+      }
+    }
+  };
+
+  const changeTheme = (newMode: ThemeMode) => {
+    setTheme(newMode);
+    localStorage.setItem("hive_theme", newMode);
+    applyTheme(newMode);
+    setShowThemeMenu(false);
+  };
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemChange = () => {
+      if (theme === "system") applyTheme("system");
+    };
+    mediaQuery.addEventListener("change", handleSystemChange);
+    return () => mediaQuery.removeEventListener("change", handleSystemChange);
+  }, [theme]);
+
+  // Click outside to close theme dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target as Node)) {
+        setShowThemeMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const checkSession = async () => {
@@ -541,18 +597,18 @@ export default function HiveApp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-[#1E293B] flex flex-col font-sans selection:bg-[#10B981]/20">
+    <div className="min-h-screen transition-colors duration-300 bg-[#FDFBF7] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-[#10B981]/20">
       {/* ---------------------------------------------------- */}
       {/* Header */}
       {/* ---------------------------------------------------- */}
-      <header className="sticky top-0 z-30 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-slate-200/80 transition-all">
+      <header className="sticky top-0 z-30 bg-[#FDFBF7]/90 dark:bg-[#0B0F19]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-all">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between py-4">
           <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shadow-sm overflow-hidden relative group">
+            <div className="w-10 h-10 flex items-center justify-center relative group">
               <img
                 src="/logo.png"
                 alt="HiVE!"
-                className="w-full h-full object-contain p-0.5"
+                className="w-full h-full object-contain"
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (!target.dataset.triedSvg) {
@@ -565,33 +621,83 @@ export default function HiveApp() {
                   }
                 }}
               />
-              <div className="w-full h-full bg-slate-900 text-emerald-400 items-center justify-center font-extrabold text-xl tracking-wider hidden">
+              <div className="w-full h-full bg-slate-900 text-emerald-400 items-center justify-center font-extrabold text-xl tracking-wider hidden rounded-xl">
                 H!
               </div>
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-xl text-slate-900 tracking-tight">HiVE!</span>
-                <span className="bg-emerald-100 text-emerald-800 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-emerald-300">
-                  hiveuin.tech
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">HSC TI UIN Jakarta</p>
+              <span className="font-extrabold text-xl text-slate-900 dark:text-white tracking-tight block leading-none">HiVE!</span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">HSC TI UIN Jakarta</p>
             </div>
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* Theme Switcher Toggle (Light / Dark / System) */}
+            <div className="relative" ref={themeMenuRef}>
+              <button
+                onClick={() => setShowThemeMenu(!showThemeMenu)}
+                className="p-2.5 text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-xl transition-all shadow-sm flex items-center justify-center"
+                title="Switch Appearance Theme (Light / Dark / System)"
+              >
+                {theme === "dark" ? (
+                  <Moon className="w-4 h-4 text-emerald-400" />
+                ) : theme === "light" ? (
+                  <Sun className="w-4 h-4 text-amber-500" />
+                ) : (
+                  <Monitor className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                )}
+              </button>
+
+              {showThemeMenu && (
+                <div className="absolute right-0 mt-2 w-36 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl py-1.5 z-50 text-xs font-semibold animate-slide-up">
+                  <button
+                    onClick={() => changeTheme("light")}
+                    className={`w-full px-3.5 py-2 flex items-center space-x-2 transition-colors ${
+                      theme === "light"
+                        ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 font-bold"
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                    }`}
+                  >
+                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Light</span>
+                  </button>
+                  <button
+                    onClick={() => changeTheme("dark")}
+                    className={`w-full px-3.5 py-2 flex items-center space-x-2 transition-colors ${
+                      theme === "dark"
+                        ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 font-bold"
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Dark</span>
+                  </button>
+                  <button
+                    onClick={() => changeTheme("system")}
+                    className={`w-full px-3.5 py-2 flex items-center space-x-2 transition-colors ${
+                      theme === "system"
+                        ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 font-bold"
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                    }`}
+                  >
+                    <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                    <span>System</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {loadingUser ? (
-              <div className="w-24 h-9 bg-slate-200/70 animate-pulse rounded-lg" />
+              <div className="w-24 h-9 bg-slate-200/70 dark:bg-slate-800 animate-pulse rounded-lg" />
             ) : user ? (
               <div className="flex items-center space-x-3">
-                <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm">
-                  <User className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs font-semibold text-slate-700 max-w-[160px] truncate">{user.email}</span>
+                <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
+                  <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 max-w-[160px] truncate">{user.email}</span>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 text-slate-600 hover:text-red-600 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-lg transition-colors shadow-sm"
+                  className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-700 hover:border-red-200 rounded-lg transition-colors shadow-sm"
                   title="Sign Out"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -621,46 +727,46 @@ export default function HiveApp() {
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
         {/* HERO SECTION / GUEST SHORTENER */}
         <section className="text-center space-y-6 pt-4 pb-2">
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-full text-emerald-800 text-xs font-semibold shadow-sm">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/80 rounded-full text-emerald-800 dark:text-emerald-300 text-xs font-semibold shadow-sm">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Fast &bull; Secure &bull; Reliable URL Shortener</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight leading-tight max-w-3xl mx-auto">
-            Shorten Links with <span className="text-emerald-600 underline decoration-emerald-300 decoration-wavy underline-offset-4">Confidence</span>
+          <h1 className="text-4xl md:text-6xl font-black tracking-tight text-slate-900 dark:text-white mb-4 leading-tight max-w-3xl mx-auto">
+            Shorten Links with <span className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-300 dark:decoration-emerald-700 decoration-wavy underline-offset-4">Confidence</span>
           </h1>
 
-          <p className="text-slate-600 text-sm sm:text-base max-w-xl mx-auto font-normal leading-relaxed">
+          <p className="text-slate-600 dark:text-slate-300 text-sm sm:text-base max-w-xl mx-auto font-normal leading-relaxed">
             Create clean short links and instant QR codes for your campus events, projects, and social media.
           </p>
 
           {/* Form */}
-          <div className="max-w-2xl mx-auto bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xl shadow-slate-900/5 transition-all">
+          <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-900/5 transition-all">
             <form onSubmit={handleShortenUrl} className="space-y-4">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Link2 className="w-5 h-5 text-emerald-600" />
+                  <Link2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <input
                   type="text"
                   value={originalUrl}
                   onChange={(e) => setOriginalUrl(e.target.value)}
                   placeholder="Paste your long link starting with https://"
-                  className="w-full pl-11 pr-4 py-3.5 bg-[#FDFBF7] text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                  className="w-full pl-11 pr-4 py-3.5 bg-[#FDFBF7] dark:bg-slate-800/80 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 border border-slate-200 dark:border-slate-700/80 rounded-xl text-sm font-medium focus:bg-white dark:focus:bg-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
                 />
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1 relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-xs font-semibold text-slate-400">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-xs font-semibold text-slate-400 dark:text-slate-500">
                     hiveuin.tech/
                   </div>
                   <input
                     type="text"
                     value={customSlug}
                     onChange={(e) => setCustomSlug(e.target.value)}
-                    placeholder="CustomAlias (optional)"
-                    className="w-full pl-28 pr-4 py-3 bg-[#FDFBF7] text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                    placeholder="custom-alias (optional)"
+                    className="w-full pl-[100px] pr-4 py-3 bg-[#FDFBF7] dark:bg-slate-800/80 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 border border-slate-200 dark:border-slate-700/80 rounded-xl text-sm font-medium focus:bg-white dark:focus:bg-slate-800 focus:border-emerald-500 transition-all"
                   />
                 </div>
 
@@ -771,52 +877,52 @@ export default function HiveApp() {
 
         {/* Dashboard */}
         {user && (
-          <section className="space-y-6 pt-6 border-t border-slate-200/80 animate-slide-up">
+          <section className="space-y-6 pt-6 border-t border-slate-200/80 dark:border-slate-800 animate-slide-up">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center space-x-2">
-                  <BarChart3 className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center space-x-2">
+                  <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                   <span>My Short Links</span>
                 </h2>
-                <p className="text-xs text-slate-500">Manage your created links and track real-time engagement analytics.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Manage your created links and track real-time engagement analytics.</p>
               </div>
 
               <div className="flex items-center space-x-3">
-                <div className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 shadow-sm">
-                  Links: <span className="text-emerald-600 font-extrabold">{userLinks.length}</span>
+                <div className="px-3.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm">
+                  Links: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{userLinks.length}</span>
                 </div>
-                <div className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 shadow-sm">
-                  Total Clicks: <span className="text-emerald-600 font-extrabold">{totalClicks}</span>
+                <div className="px-3.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm">
+                  Total Clicks: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{totalClicks}</span>
                 </div>
               </div>
             </div>
 
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Search className="w-4 h-4 text-slate-400" />
+                <Search className="w-4 h-4 text-slate-400 dark:text-slate-500" />
               </div>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search links by slug or destination URL..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition-all"
+                className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition-all"
               />
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
               {loadingLinks ? (
-                <div className="p-8 text-center text-slate-400 text-xs flex items-center justify-center space-x-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs flex items-center justify-center space-x-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 dark:text-emerald-400" />
                   <span>Loading your links...</span>
                 </div>
               ) : filteredLinks.length === 0 ? (
                 <div className="p-12 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
                     <Link2 className="w-6 h-6" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-700">No links found</h3>
-                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">No links found</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
                     {searchQuery ? "No short links match your search query." : "Shorten your first web link using the form above!"}
                   </p>
                 </div>
@@ -824,7 +930,7 @@ export default function HiveApp() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <tr className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         <th className="py-3.5 px-4">Short Slug</th>
                         <th className="py-3.5 px-4">Original Destination</th>
                         <th className="py-3.5 px-4 text-center">Clicks</th>
@@ -832,10 +938,10 @@ export default function HiveApp() {
                         <th className="py-3.5 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                       {filteredLinks.map((item) => (
-                        <tr key={item.id} className="hover:bg-emerald-50/20 transition-colors">
-                          <td className="py-3.5 px-4 font-bold text-slate-900 whitespace-nowrap">
+                        <tr key={item.id} className="hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
                             <a
                               href={item.fullShortUrl}
                               target="_blank"
@@ -913,14 +1019,14 @@ export default function HiveApp() {
       </main>
 
       {/* ---------------------------------------------------- */}
-      {/* AUTH MODAL (OTP, Password Login, Register & Forgot Password) */}
+      {/* AUTH MODAL */}
       {/* ---------------------------------------------------- */}
       {showAuthModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-slide-up overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 border border-slate-200 shadow-2xl relative my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-6">
             <button
               onClick={() => setShowAuthModal(false)}
-              className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1415,27 +1521,27 @@ export default function HiveApp() {
 
       {/* QR Modal */}
       {qrModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-slide-up">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 border border-slate-200 shadow-2xl relative text-center space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm animate-slide-up">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative text-center space-y-5">
             <button
               onClick={() => setQrModalItem(null)}
-              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div>
-              <h3 className="text-lg font-bold text-slate-900">QR Code Generator</h3>
-              <p className="text-xs text-slate-500 truncate max-w-xs mx-auto mt-0.5">{qrModalItem.fullShortUrl}</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">QR Code Generator</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-xs mx-auto mt-0.5">{qrModalItem.fullShortUrl}</p>
             </div>
 
-            <div className="p-4 bg-[#FDFBF7] border border-slate-200 rounded-2xl inline-block shadow-inner">
+            <div className="p-4 bg-[#FDFBF7] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl inline-block shadow-inner">
               <QRCodeSVG
                 id="hive-qr-svg"
                 value={qrModalItem.fullShortUrl}
                 size={220}
-                bgColor="#FDFBF7"
-                fgColor="#1E293B"
+                bgColor={theme === "dark" ? "#1E293B" : "#FDFBF7"}
+                fgColor={theme === "dark" ? "#F8FAFC" : "#1E293B"}
                 level="H"
                 includeMargin={true}
               />
@@ -1471,22 +1577,22 @@ export default function HiveApp() {
 
       {/* Privacy Policy Modal */}
       {showPrivacyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl relative space-y-4 max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-4 max-h-[80vh] overflow-y-auto">
             <button
               onClick={() => setShowPrivacyModal(false)}
-              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
             <div className="flex items-center space-x-3 mb-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Privacy Policy</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Privacy Policy</h3>
             </div>
-            <p className="text-xs text-slate-500 font-medium">Effective Date: January 1, 2026</p>
-            <div className="space-y-3 text-sm text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Effective Date: January 1, 2026</p>
+            <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               <p>At <strong>HiVE!</strong>, we are committed to protecting your privacy. This policy outlines how we handle and protect your personal information.</p>
               <p><strong>Data We Collect:</strong> We collect your email address for authentication purposes only. We also save shortened links and aggregated click performance data tied to your account.</p>
               <p><strong>How We Use It:</strong> Your email is strictly used for sending verification codes and account management. We do not sell, share, or disclose your personal data to third parties.</p>
@@ -1500,22 +1606,22 @@ export default function HiveApp() {
 
       {/* Terms of Service Modal */}
       {showTermsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl relative space-y-4 max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-4 max-h-[80vh] overflow-y-auto">
             <button
               onClick={() => setShowTermsModal(false)}
-              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
             <div className="flex items-center space-x-3 mb-2">
-              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">
-                <Lock className="w-5 h-5 text-slate-600" />
+              <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <Lock className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Terms of Service</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Terms of Service</h3>
             </div>
-            <p className="text-xs text-slate-500 font-medium">Effective Date: January 1, 2026</p>
-            <div className="space-y-3 text-sm text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Effective Date: January 1, 2026</p>
+            <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               <p>By using <strong>HiVE!</strong>, you agree to the following terms. Please read them carefully before using the platform.</p>
               <p><strong>Acceptable Use:</strong> HiVE! is intended for legitimate academic, campus, and professional purposes. You agree not to shorten links that lead to phishing, malware, illegal content, spam, or any harmful material.</p>
               <p><strong>Account Responsibility:</strong> You are responsible for maintaining the confidentiality of your account credentials. Any activity under your account is your responsibility.</p>
@@ -1529,14 +1635,14 @@ export default function HiveApp() {
       )}
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-slate-200 bg-white/60 py-8 text-slate-600 text-xs">
+      <footer className="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/60 py-8 text-slate-600 dark:text-slate-400 text-xs transition-colors">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200/80 flex items-center justify-center text-xs font-bold overflow-hidden shadow-sm">
+            <div className="w-8 h-8 flex items-center justify-center text-xs font-bold">
               <img
                 src="/logo.png"
                 alt="HiVE!"
-                className="w-full h-full object-contain p-0.5"
+                className="w-full h-full object-contain"
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (!target.dataset.triedSvg) {
@@ -1549,25 +1655,25 @@ export default function HiveApp() {
                   }
                 }}
               />
-              <span className="hidden w-full h-full items-center justify-center bg-slate-900 text-emerald-400 font-bold text-xs">H!</span>
+              <span className="hidden w-full h-full items-center justify-center bg-slate-900 text-emerald-400 font-bold text-xs rounded-lg">H!</span>
             </div>
-            <span className="font-semibold text-slate-700">HiVE! &bull; HSC TI UIN JKT</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">HiVE! &bull; HSC TI UIN JKT</span>
           </div>
 
           <div className="flex items-center space-x-6">
-            <button onClick={() => setShowPrivacyModal(true)} className="hover:text-slate-900 transition-colors font-medium">
+            <button onClick={() => setShowPrivacyModal(true)} className="hover:text-slate-900 dark:hover:text-white transition-colors font-medium">
               Privacy Policy
             </button>
-            <button onClick={() => setShowTermsModal(true)} className="hover:text-slate-900 transition-colors font-medium">
+            <button onClick={() => setShowTermsModal(true)} className="hover:text-slate-900 dark:hover:text-white transition-colors font-medium">
               Terms of Service
             </button>
-            <div className="flex items-center space-x-1.5 text-emerald-600 font-semibold">
+            <div className="flex items-center space-x-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <span>All Systems Operational</span>
             </div>
           </div>
 
-          <p className="text-slate-400 text-[11px]">© 2026 HiVE! HSC TI UIN JKT. All rights reserved.</p>
+          <p className="text-slate-400 dark:text-slate-500 text-[11px]">© 2026 HiVE! HSC TI UIN JKT. All rights reserved.</p>
         </div>
       </footer>
     </div>
