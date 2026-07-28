@@ -344,13 +344,8 @@ export default function HiveApp() {
 
       setOtpSent(true);
       setOtpTimer(180);
-      if (data.debugOtp && typeof data.debugOtp === "string" && data.debugOtp.length === 6) {
-        setOtpDigits(data.debugOtp.split(""));
-        setAuthSuccessMsg(`Code sent! (Dev code auto-filled: ${data.debugOtp})`);
-      } else {
-        setOtpDigits(["", "", "", "", "", ""]);
-        setAuthSuccessMsg("3-minute verification code sent to your email!");
-      }
+      setOtpDigits(["", "", "", "", "", ""]);
+      setAuthSuccessMsg("3-minute verification code sent to your email!");
 
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();

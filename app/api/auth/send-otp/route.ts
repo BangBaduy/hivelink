@@ -163,8 +163,6 @@ export async function POST(req: Request) {
         console.error("[Resend Exception]:", err);
         deliveryErrorMessage = err.message || "Failed to contact Resend API.";
       }
-    } else {
-      console.log(`[DEV OTP Console Output] Code for ${cleanEmail} (${type}): ${otpCode}`);
     }
 
     return NextResponse.json({
@@ -172,7 +170,6 @@ export async function POST(req: Request) {
       message: emailDelivered
         ? "3-minute verification code sent! Please check your email inbox."
         : "Verification code generated! Please check your inbox or spam folder.",
-      debugOtp: process.env.NODE_ENV !== "production" ? otpCode : undefined,
     });
   } catch (error: any) {
     console.error("[FATAL send-otp ROUTE ERROR]:", error);
