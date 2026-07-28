@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { getUserByEmail } from "@/lib/db";
-import { verifyPassword } from "@/lib/security";
+import { getUserByEmail, updateUserPassword } from "@/lib/db";
+import { hashPassword, passwordNeedsRehash, verifyPassword } from "@/lib/security";
 import { signSessionToken, buildSessionCookieHeader } from "@/lib/auth";
+import { checkAuthRateLimits, rateLimitResponse } from "@/lib/request-security";
+
+const DUMMY_PASSWORD_HASH = hashPassword("invalid-account-password");
 
 export async function POST(req: Request) {
   try {
@@ -17,28 +20,34 @@ export async function POST(req: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    const rateLimit = await checkAuthRateLimits(req, cleanEmail, "password-login");
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSeconds);
+    }
+
     // Fetch user from DB
     const user = await getUserByEmail(cleanEmail);
-    if (!user || !user.password_hash) {
+
+    // Always perform an expensive password check to reduce account-enumeration
+    // timing differences.
+    const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
+    const isValid = verifyPassword(password, passwordHash);
+    if (!user || !user.password_hash || !isValid) {
       return NextResponse.json(
         { success: false, message: "Incorrect email or password. Please try again." },
         { status: 401 }
       );
     }
 
-    // Verify password hash
-    const isValid = verifyPassword(password, user.password_hash);
-    if (!isValid) {
-      return NextResponse.json(
-        { success: false, message: "Incorrect email or password. Please try again." },
-        { status: 401 }
-      );
+    if (passwordNeedsRehash(user.password_hash)) {
+      await updateUserPassword(cleanEmail, hashPassword(password));
     }
 
     // Issue JWT session token
     const token = signSessionToken({
       userId: user.id,
       email: user.email,
+      sessionVersion: user.session_version,
     });
 
     const cookieHeader = buildSessionCookieHeader(token);

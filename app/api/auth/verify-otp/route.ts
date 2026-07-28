@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyOtpCode, getUserByEmail } from "@/lib/db";
 import { signSessionToken, buildSessionCookieHeader } from "@/lib/auth";
+import { checkAuthRateLimits, rateLimitResponse } from "@/lib/request-security";
 
 export async function POST(req: Request) {
   try {
@@ -17,19 +18,24 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanCode = code.trim();
 
-    if (cleanCode.length !== 6) {
+    if (!/^\d{6}$/.test(cleanCode)) {
       return NextResponse.json(
         { success: false, message: "Verification code must be exactly 6 digits." },
         { status: 400 }
       );
     }
 
+    const rateLimit = await checkAuthRateLimits(req, cleanEmail, "otp-verify");
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSeconds);
+    }
+
     // CRITICAL SECURITY CHECK: OTP sign-in only works for registered accounts
     const existingUser = await getUserByEmail(cleanEmail);
     if (!existingUser) {
       return NextResponse.json(
-        { success: false, message: "No account found with this email. Please create an account first." },
-        { status: 404 }
+        { success: false, message: "Invalid or expired verification code. Please request a new one." },
+        { status: 400 }
       );
     }
 
@@ -47,6 +53,7 @@ export async function POST(req: Request) {
     const token = signSessionToken({
       userId: existingUser.id,
       email: existingUser.email,
+      sessionVersion: existingUser.session_version,
     });
 
     const cookieHeader = buildSessionCookieHeader(token);

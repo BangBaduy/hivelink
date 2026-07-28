@@ -83,15 +83,50 @@ export function evaluatePasswordStrength(password: string): PasswordStrengthResu
  */
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
-  return `${salt}:${hash}`;
+  const cost = 32768;
+  const blockSize = 8;
+  const parallelization = 1;
+  const hash = crypto.scryptSync(password, salt, 64, {
+    N: cost,
+    r: blockSize,
+    p: parallelization,
+    maxmem: 64 * 1024 * 1024,
+  }).toString("hex");
+  return `scrypt$${cost}$${blockSize}$${parallelization}$${salt}$${hash}`;
 }
 
 export function verifyPassword(password: string, combinedHash: string): boolean {
-  if (!combinedHash || !combinedHash.includes(":")) return false;
-  const [salt, originalHash] = combinedHash.split(":");
-  const hashToVerify = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
-  return crypto.timingSafeEqual(Buffer.from(originalHash, "hex"), Buffer.from(hashToVerify, "hex"));
+  try {
+    if (combinedHash.startsWith("scrypt$")) {
+      const [, costValue, blockSizeValue, parallelizationValue, salt, originalHash] = combinedHash.split("$");
+      const cost = Number(costValue);
+      const blockSize = Number(blockSizeValue);
+      const parallelization = Number(parallelizationValue);
+      if (!salt || !originalHash || !cost || !blockSize || !parallelization) return false;
+
+      const expected = Buffer.from(originalHash, "hex");
+      const actual = crypto.scryptSync(password, salt, expected.length, {
+        N: cost,
+        r: blockSize,
+        p: parallelization,
+        maxmem: 64 * 1024 * 1024,
+      });
+      return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+    }
+
+    // Backward-compatible verification for existing PBKDF2 hashes.
+    if (!combinedHash.includes(":")) return false;
+    const [salt, originalHash] = combinedHash.split(":");
+    const expected = Buffer.from(originalHash, "hex");
+    const actual = crypto.pbkdf2Sync(password, salt, 10000, expected.length, "sha512");
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
+export function passwordNeedsRehash(combinedHash: string): boolean {
+  return !combinedHash.startsWith("scrypt$32768$8$1$");
 }
 
 /**
@@ -263,7 +298,7 @@ export function generateRandomSlug(length: number = 6): string {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(crypto.randomInt(0, chars.length));
   }
   return result;
 }

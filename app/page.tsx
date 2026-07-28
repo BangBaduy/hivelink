@@ -49,7 +49,44 @@ interface UserState {
   email: string;
 }
 
+interface AnalyticsData {
+  link: {
+    id: string;
+    shortSlug: string;
+    originalUrl: string;
+    totalClicks: number;
+  };
+  periodDays: number;
+  summary: {
+    clicks: number;
+    uniqueVisitors: number;
+  };
+  daily: Array<{ date: string; clicks: number; uniqueVisitors: number }>;
+  devices: Array<{ label: string; clicks: number }>;
+  countries: Array<{ label: string; clicks: number }>;
+  referrers: Array<{ label: string; clicks: number }>;
+  privacy: {
+    rawIpStored: false;
+    uniqueVisitorMethod: string;
+    uniqueVisitorRetentionDays: number;
+  };
+}
+
 type AuthTab = "otp" | "password_login" | "password_register" | "forgot_password";
+type ThemeMode = "light" | "dark" | "system";
+
+function applyTheme(mode: ThemeMode) {
+  const root = document.documentElement;
+  if (mode === "dark") {
+    root.classList.add("dark");
+  } else if (mode === "light") {
+    root.classList.remove("dark");
+  } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    root.classList.add("dark");
+  } else {
+    root.classList.remove("dark");
+  }
+}
 
 export default function HiveApp() {
   // App State
@@ -68,6 +105,12 @@ export default function HiveApp() {
   const [loadingLinks, setLoadingLinks] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<UrlItem | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [analyticsItem, setAnalyticsItem] = useState<UrlItem | null>(null);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [analyticsDays, setAnalyticsDays] = useState<7 | 30 | 90>(30);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   // Auth Modal State
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -99,7 +142,6 @@ export default function HiveApp() {
   const [showTermsModal, setShowTermsModal] = useState(false);
 
   // Theme State (Light / Dark / System)
-  type ThemeMode = "light" | "dark" | "system";
   const [theme, setTheme] = useState<ThemeMode>("system");
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -108,30 +150,6 @@ export default function HiveApp() {
 
   // Password strength score
   const passwordStrength: PasswordStrengthResult = evaluatePasswordStrength(passwordInput);
-
-  useEffect(() => {
-    checkSession();
-
-    // Theme initialization
-    const savedTheme = (localStorage.getItem("hive_theme") as ThemeMode) || "system";
-    setTheme(savedTheme);
-    applyTheme(savedTheme);
-  }, []);
-
-  const applyTheme = (mode: ThemeMode) => {
-    const root = document.documentElement;
-    if (mode === "dark") {
-      root.classList.add("dark");
-    } else if (mode === "light") {
-      root.classList.remove("dark");
-    } else {
-      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
-      }
-    }
-  };
 
   const changeTheme = (newMode: ThemeMode) => {
     setTheme(newMode);
@@ -160,6 +178,21 @@ export default function HiveApp() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const fetchUserLinks = async () => {
+    setLoadingLinks(true);
+    try {
+      const res = await fetch("/api/urls");
+      const data = await res.json();
+      if (data.success) {
+        setUserLinks(data.links);
+      }
+    } catch {
+      // Handled
+    } finally {
+      setLoadingLinks(false);
+    }
+  };
+
   const checkSession = async () => {
     setLoadingUser(true);
     try {
@@ -178,20 +211,18 @@ export default function HiveApp() {
     }
   };
 
-  const fetchUserLinks = async () => {
-    setLoadingLinks(true);
-    try {
-      const res = await fetch("/api/urls");
-      const data = await res.json();
-      if (data.success) {
-        setUserLinks(data.links);
-      }
-    } catch {
-      // Handled
-    } finally {
-      setLoadingLinks(false);
-    }
-  };
+  useEffect(() => {
+    // The async session bootstrap owns the loading state for this mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkSession();
+
+    // Theme initialization
+    const savedTheme = (localStorage.getItem("hive_theme") as ThemeMode) || "system";
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
+    // Session bootstrap intentionally runs only once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 180-second countdown timer for OTP
   useEffect(() => {
@@ -519,6 +550,8 @@ export default function HiveApp() {
       const data = await res.json();
       if (data.success) {
         setUserLinks((prev) => prev.filter((item) => item.id !== id));
+        setPendingDelete(null);
+        setDeleteConfirmText("");
         triggerToast("Link deleted.");
       } else {
         triggerToast(data.message || "Failed to delete link.");
@@ -528,6 +561,37 @@ export default function HiveApp() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const openDeleteConfirmation = (item: UrlItem) => {
+    setPendingDelete(item);
+    setDeleteConfirmText("");
+  };
+
+  const fetchAnalytics = async (item: UrlItem, days: 7 | 30 | 90) => {
+    setAnalyticsItem(item);
+    setAnalyticsDays(days);
+    setAnalyticsLoading(true);
+    try {
+      const res = await fetch(`/api/urls/${item.id}/analytics?days=${days}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        triggerToast(data.message || "Unable to load analytics.");
+        return;
+      }
+      setAnalyticsData(data.analytics);
+    } catch {
+      triggerToast("Unable to load analytics.");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const openAnalytics = (item: UrlItem) => {
+    setAnalyticsData(null);
+    void fetchAnalytics(item, analyticsDays);
   };
 
   const filteredLinks = userLinks.filter(
@@ -605,6 +669,8 @@ export default function HiveApp() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between py-4">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 flex items-center justify-center relative group">
+              {/* Native img is intentional so the runtime PNG -> SVG fallback can mutate src. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo.png"
                 alt="HiVE!"
@@ -994,7 +1060,15 @@ export default function HiveApp() {
                               </button>
 
                               <button
-                                onClick={() => handleDeleteLink(item.id)}
+                                onClick={() => openAnalytics(item)}
+                                className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                title="View Analytics"
+                              >
+                                <BarChart3 className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                onClick={() => openDeleteConfirmation(item)}
                                 disabled={deletingId === item.id}
                                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
                                 title="Delete Link"
@@ -1567,6 +1641,220 @@ export default function HiveApp() {
         </div>
       )}
 
+      {/* Analytics Modal */}
+      {analyticsItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-5 max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => {
+                setAnalyticsItem(null);
+                setAnalyticsData(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
+              aria-label="Close analytics"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="pr-10">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Analytics: {analyticsItem.shortSlug}
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1">
+                {analyticsItem.originalUrl}
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              {([7, 30, 90] as const).map((days) => (
+                <button
+                  key={days}
+                  onClick={() => void fetchAnalytics(analyticsItem, days)}
+                  disabled={analyticsLoading}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                    analyticsDays === days
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                  }`}
+                >
+                  {days} days
+                </button>
+              ))}
+            </div>
+
+            {analyticsLoading ? (
+              <div className="py-16 flex items-center justify-center gap-2 text-sm text-slate-500">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                Loading privacy-safe analytics...
+              </div>
+            ) : analyticsData ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900">
+                    <p className="text-[11px] uppercase font-bold text-emerald-700 dark:text-emerald-400">Period Clicks</p>
+                    <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{analyticsData.summary.clicks}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900">
+                    <p className="text-[11px] uppercase font-bold text-blue-700 dark:text-blue-400">Approx. Unique</p>
+                    <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{analyticsData.summary.uniqueVisitors}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 col-span-2 sm:col-span-1">
+                    <p className="text-[11px] uppercase font-bold text-slate-500">Lifetime Clicks</p>
+                    <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{analyticsData.link.totalClicks}</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Clicks by day</h4>
+                    <span className="text-[10px] text-slate-400">UTC dates</span>
+                  </div>
+                  <div className="h-40 flex items-end gap-1 overflow-x-auto pb-6">
+                    {analyticsData.daily.map((point) => {
+                      const maximum = Math.max(
+                        1,
+                        ...analyticsData.daily.map((row) => row.clicks)
+                      );
+                      return (
+                        <div
+                          key={point.date}
+                          className="h-full min-w-3 flex-1 flex flex-col justify-end items-center group relative"
+                          title={`${point.date}: ${point.clicks} clicks, ${point.uniqueVisitors} approximate unique visitors`}
+                        >
+                          <div
+                            className="w-full max-w-5 rounded-t bg-emerald-500 hover:bg-emerald-600 transition-colors min-h-px"
+                            style={{ height: `${Math.max(1, (point.clicks / maximum) * 100)}%` }}
+                          />
+                          <span className="absolute -bottom-5 text-[8px] text-slate-400 hidden sm:block">
+                            {new Date(`${point.date}T00:00:00Z`).getUTCDate()}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-3">
+                  {[
+                    { title: "Devices", rows: analyticsData.devices },
+                    {
+                      title: "Countries",
+                      rows: analyticsData.countries.map((row) => ({
+                        ...row,
+                        label: row.label === "ZZ" ? "Unknown" : row.label,
+                      })),
+                    },
+                    { title: "Referrers", rows: analyticsData.referrers },
+                  ].map((section) => (
+                    <div key={section.title} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-3">{section.title}</h4>
+                      <div className="space-y-2">
+                        {section.rows.length === 0 ? (
+                          <p className="text-xs text-slate-400">No data yet.</p>
+                        ) : (
+                          section.rows.slice(0, 6).map((row) => (
+                            <div key={row.label} className="flex items-center justify-between gap-2 text-xs">
+                              <span className="truncate text-slate-600 dark:text-slate-300 capitalize" title={row.label}>{row.label}</span>
+                              <span className="font-bold text-slate-900 dark:text-white">{row.clicks}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <p>
+                    Raw IP addresses are never stored. Unique visitors are approximate and use daily rotating keyed hashes retained for {analyticsData.privacy.uniqueVisitorRetentionDays} days.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="py-12 text-center text-sm text-slate-500">Analytics are unavailable.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 dark:bg-slate-950/85 backdrop-blur-sm">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (deleteConfirmText === pendingDelete.shortSlug) {
+                void handleDeleteLink(pendingDelete.id);
+              }
+            }}
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 border border-red-200 dark:border-red-900 shadow-2xl space-y-5"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete this short URL?</h3>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">This action is permanent and cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1">
+              <p className="text-xs font-bold text-slate-900 dark:text-white">/{pendingDelete.shortSlug}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={pendingDelete.originalUrl}>{pendingDelete.originalUrl}</p>
+              <p className="text-[11px] text-slate-500">{pendingDelete.clicks} recorded clicks</p>
+            </div>
+
+            <div>
+              <label htmlFor="delete-confirmation" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Type <strong>{pendingDelete.shortSlug}</strong> to confirm
+              </label>
+              <input
+                id="delete-confirmation"
+                value={deleteConfirmText}
+                onChange={(event) => setDeleteConfirmText(event.target.value)}
+                autoComplete="off"
+                autoFocus
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingDelete(null);
+                  setDeleteConfirmText("");
+                }}
+                disabled={deletingId === pendingDelete.id}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  deleteConfirmText !== pendingDelete.shortSlug ||
+                  deletingId === pendingDelete.id
+                }
+                className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {deletingId === pendingDelete.id ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Delete permanently
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Toast */}
       {toast.show && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-3 bg-slate-900 text-white text-xs font-bold rounded-2xl shadow-xl flex items-center space-x-2.5 border border-slate-700 animate-slide-up">
@@ -1591,13 +1879,15 @@ export default function HiveApp() {
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Privacy Policy</h3>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Effective Date: January 1, 2026</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Effective Date: July 28, 2026</p>
             <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              <p>At <strong>HiVE!</strong>, we are committed to protecting your privacy. This policy outlines how we handle and protect your personal information.</p>
-              <p><strong>Data We Collect:</strong> We collect your email address for authentication purposes only. We also save shortened links and aggregated click performance data tied to your account.</p>
-              <p><strong>How We Use It:</strong> Your email is strictly used for sending verification codes and account management. We do not sell, share, or disclose your personal data to third parties.</p>
-              <p><strong>Security:</strong> We implement enterprise-grade security protocols, including cryptographic password protection, secure session management, and encrypted data storage to ensure your information remains safe.</p>
-              <p><strong>Data Ownership:</strong> You have full control over your links and may delete them at any time from your personal dashboard.</p>
+              <p>At <strong>HiVE!</strong>, we collect only the information needed to operate accounts, shortened links, and privacy-preserving analytics.</p>
+              <p><strong>Account Data:</strong> We store your email address, cryptographically protected password data when applicable, session-security metadata, and the links created under your account. Email delivery providers process your address only to deliver authentication messages.</p>
+              <p><strong>Analytics Data:</strong> We store aggregate click totals, coarse country codes supplied by trusted hosting proxies, device categories, and referrer hostnames. We do not store raw visitor IP addresses or full referrer URLs.</p>
+              <p><strong>Approximate Unique Visitors:</strong> A raw IP address and user-agent are used transiently to create a keyed hash that changes every UTC day. The raw values are immediately discarded. Hashes are used only for the 90-day analytics window, are purged during analytics activity, and cannot track visitors across days.</p>
+              <p><strong>Purpose:</strong> Analytics are provided only to the authenticated owner of a link. We do not sell personal information or use link analytics for advertising profiles.</p>
+              <p><strong>Data Ownership:</strong> You may permanently delete a link from your dashboard. Deleting a link also deletes its aggregate analytics and retained visitor hashes.</p>
+              <p><strong>Security:</strong> Access to account and analytics data is restricted by authenticated ownership checks, encrypted transport, secure sessions, and cryptographic password protection.</p>
               <p><strong>Contact:</strong> For questions regarding your data privacy, reach out to the HSC TI UIN JKT team via official communication channels.</p>
             </div>
           </div>
@@ -1639,6 +1929,8 @@ export default function HiveApp() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 flex items-center justify-center text-xs font-bold">
+              {/* Native img is intentional so the runtime PNG -> SVG fallback can mutate src. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo.png"
                 alt="HiVE!"

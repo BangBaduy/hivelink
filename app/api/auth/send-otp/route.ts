@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createOtp, getUserByEmail } from "@/lib/db";
 import { Resend } from "resend";
+import crypto from "crypto";
+import {
+  checkAuthRateLimits,
+  isOtpPurpose,
+  rateLimitResponse,
+} from "@/lib/request-security";
 
 export async function POST(req: Request) {
   try {
@@ -23,34 +29,34 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!isOtpPurpose(type)) {
+      return NextResponse.json(
+        { success: false, message: "Invalid verification purpose." },
+        { status: 400 }
+      );
+    }
+
+    const rateLimit = await checkAuthRateLimits(req, cleanEmail, "otp-send");
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSeconds);
+    }
+
     const existingUser = await getUserByEmail(cleanEmail);
 
-    // Validation per OTP purpose:
-    if (type === "register") {
-      if (existingUser) {
-        return NextResponse.json(
-          { success: false, message: "An account with this email already exists. Please sign in instead." },
-          { status: 409 }
-        );
-      }
-    } else if (type === "forgot_password") {
-      if (!existingUser) {
-        return NextResponse.json(
-          { success: false, message: "No account found with this email address." },
-          { status: 404 }
-        );
-      }
-    } else if (type === "auth") {
-      if (!existingUser) {
-        return NextResponse.json(
-          { success: false, message: "No account found with this email. Please register first using the Register tab." },
-          { status: 404 }
-        );
-      }
+    // Use the same response for eligible and ineligible addresses to prevent
+    // account enumeration.
+    const isEligible =
+      (type === "register" && !existingUser) ||
+      ((type === "forgot_password" || type === "auth") && !!existingUser);
+    if (!isEligible) {
+      return NextResponse.json({
+        success: true,
+        message: "If this email is eligible, a verification code has been sent.",
+      });
     }
 
     // Generate 6-digit OTP code
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
 
     // Save OTP to database with 3-minute expiration
     try {

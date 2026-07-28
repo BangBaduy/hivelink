@@ -1,19 +1,20 @@
 const { neon } = require("@neondatabase/serverless");
+const { requireEnv } = require("./env");
 
-const dbUrl = "postgresql://neondb_owner:npg_Fr2EfBObG4Zn@ep-soft-bread-azesbcoo-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
+const dbUrl = requireEnv("DATABASE_URL");
 
 async function main() {
   console.log("Querying Neon DB users and otps tables...");
   const sql = neon(dbUrl);
 
-  const users = await sql`SELECT * FROM users;`;
-  console.log("Users in Neon DB:", users);
-
-  const otps = await sql`SELECT * FROM otps ORDER BY created_at DESC LIMIT 10;`;
-  console.log("OTPs in Neon DB:", otps);
-
-  const urls = await sql`SELECT * FROM urls ORDER BY created_at DESC LIMIT 10;`;
-  console.log("URLs in Neon DB:", urls);
+  const users = await sql`SELECT COUNT(*)::integer AS count FROM users;`;
+  const otps = await sql`SELECT COUNT(*)::integer AS count FROM otps WHERE expires_at > NOW();`;
+  const urls = await sql`SELECT COUNT(*)::integer AS count FROM urls;`;
+  console.log({
+    users: users[0].count,
+    activeOtps: otps[0].count,
+    urls: urls[0].count,
+  });
 }
 
 main().catch(console.error);

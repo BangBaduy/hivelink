@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
-import { getLinkBySlug, incrementClickCount } from "@/lib/db";
+import {
+  getLinkBySlug,
+  incrementClickCount,
+  recordPrivacySafeAnalytics,
+} from "@/lib/db";
 import { RESERVED_SLUGS } from "@/lib/security";
+import { buildPrivacySafeAnalyticsContext } from "@/lib/analytics";
 
 export async function GET(
   req: Request,
@@ -27,6 +32,18 @@ export async function GET(
 
     // Atomically increment click count asynchronously
     await incrementClickCount(slug);
+    if (linkRecord.user_id) {
+      try {
+        const context = buildPrivacySafeAnalyticsContext(req);
+        await recordPrivacySafeAnalytics(linkRecord.id, context);
+      } catch (error) {
+        // Analytics must never block a valid redirect or expose request data.
+        console.error("Privacy-safe analytics recording failed.", {
+          linkId: linkRecord.id,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
 
     // Issue HTTP 302 redirect to original destination URL
     return NextResponse.redirect(linkRecord.original_url, 302);

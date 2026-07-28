@@ -1,6 +1,7 @@
 const { neon } = require("@neondatabase/serverless");
+const { requireEnv } = require("./env");
 
-const dbUrl = "postgresql://neondb_owner:npg_Fr2EfBObG4Zn@ep-soft-bread-azesbcoo-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
+const dbUrl = requireEnv("DATABASE_URL");
 
 async function test() {
   console.log("Connecting to Neon DB...");

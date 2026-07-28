@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUserByEmail, createUserWithPassword, verifyOtpCode } from "@/lib/db";
 import { evaluatePasswordStrength, hashPassword } from "@/lib/security";
 import { signSessionToken, buildSessionCookieHeader } from "@/lib/auth";
+import { checkAuthRateLimits, rateLimitResponse } from "@/lib/request-security";
 
 export async function POST(req: Request) {
   try {
@@ -18,11 +19,16 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanCode = code.trim();
 
-    if (cleanCode.length !== 6) {
+    if (!/^\d{6}$/.test(cleanCode)) {
       return NextResponse.json(
         { success: false, message: "Verification code must be exactly 6 digits." },
         { status: 400 }
       );
+    }
+
+    const rateLimit = await checkAuthRateLimits(req, cleanEmail, "otp-verify");
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSeconds);
     }
 
     // Evaluate password strength requirements
@@ -38,8 +44,8 @@ export async function POST(req: Request) {
     const existing = await getUserByEmail(cleanEmail);
     if (existing) {
       return NextResponse.json(
-        { success: false, message: "An account with this email address already exists. Please sign in instead." },
-        { status: 409 }
+        { success: false, message: "Unable to complete registration with these credentials." },
+        { status: 400 }
       );
     }
 
@@ -60,6 +66,7 @@ export async function POST(req: Request) {
     const token = signSessionToken({
       userId: user.id,
       email: user.email,
+      sessionVersion: user.session_version,
     });
 
     const cookieHeader = buildSessionCookieHeader(token);

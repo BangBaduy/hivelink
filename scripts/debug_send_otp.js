@@ -1,9 +1,11 @@
 const { neon } = require("@neondatabase/serverless");
 const { Resend } = require("resend");
+const crypto = require("crypto");
+const { requireEnv } = require("./env");
 
-const dbUrl = "postgresql://neondb_owner:npg_Fr2EfBObG4Zn@ep-soft-bread-azesbcoo-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
-const resendApiKey = "re_bLmLW97c_HrtUboNQdJDVqhvrX5zainTE";
-const fromEmail = "no-reply@upvance.site";
+const dbUrl = requireEnv("DATABASE_URL");
+const resendApiKey = requireEnv("RESEND_API_KEY");
+const fromEmail = process.env.RESEND_FROM_EMAIL || "no-reply@upvance.site";
 
 async function debug() {
   console.log("=== DEBUGGING SEND-OTP ROUTE EXECUTION ===");
@@ -17,8 +19,7 @@ async function debug() {
     console.log("Step 1 Result:", existing);
 
     console.log("Step 2: Generating OTP code...");
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log("OTP Code:", otpCode);
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
 
     console.log("Step 3: Inserting OTP into Neon DB...");
     const expiresAt = new Date(Date.now() + 3 * 60 * 1000).toISOString();

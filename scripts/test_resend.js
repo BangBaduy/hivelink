@@ -1,10 +1,11 @@
 const { Resend } = require("resend");
+const { requireEnv } = require("./env");
 
-const apiKey = "re_bLmLW97c_HrtUboNQdJDVqhvrX5zainTE";
-const fromEmail = "no-reply@upvance.site";
+const apiKey = requireEnv("RESEND_API_KEY");
+const fromEmail = process.env.RESEND_FROM_EMAIL || "no-reply@upvance.site";
 
 async function main() {
-  console.log("Testing Resend API with Key:", apiKey);
+  console.log("Testing Resend API...");
   const resend = new Resend(apiKey);
 
   try {

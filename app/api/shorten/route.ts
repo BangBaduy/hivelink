@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
-import { createShortUrl, getLinkBySlug } from "@/lib/db";
-import { validateTargetUrl, validateSlug, generateRandomSlug, checkRateLimit } from "@/lib/security";
+import { createShortUrl, isUniqueViolation, UrlRecord } from "@/lib/db";
+import { validateTargetUrl, validateSlug, generateRandomSlug } from "@/lib/security";
 import { getSession } from "@/lib/auth";
+import { checkIpRateLimit, rateLimitResponse } from "@/lib/request-security";
 
 export async function POST(req: Request) {
   try {
     // 1. Rate Limiting Check
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "127.0.0.1";
-    const rateCheck = checkRateLimit(ip);
+    const rateCheck = await checkIpRateLimit(req, "shorten", 30, 60 * 1000);
     if (!rateCheck.allowed) {
-      return NextResponse.json(
-        { success: false, message: "Too many requests. Please slow down and try again in a minute." },
-        { status: 429 }
-      );
+      return rateLimitResponse(rateCheck.retryAfterSeconds);
     }
 
     // 2. Parse payload
@@ -37,8 +34,12 @@ export async function POST(req: Request) {
 
     const validatedUrl = urlValidation.parsedUrl.toString();
 
-    // 4. Custom Slug Handling
-    let slug = "";
+    // 4. Check if user is logged in via JWT session cookie
+    const session = await getSession();
+    const userId = session ? session.userId : null;
+
+    // 5. Validate and atomically claim a custom or generated slug.
+    let newRecord: UrlRecord;
     if (customSlug && typeof customSlug === "string" && customSlug.trim().length > 0) {
       const trimmedSlug = customSlug.trim();
 
@@ -50,40 +51,33 @@ export async function POST(req: Request) {
         );
       }
 
-      // Check availability
-      const existing = await getLinkBySlug(trimmedSlug);
-      if (existing) {
+      try {
+        newRecord = await createShortUrl(validatedUrl, trimmedSlug, userId);
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
         return NextResponse.json(
           { success: false, message: "That custom link alias is already taken. Please choose another one." },
           { status: 409 }
         );
       }
-
-      slug = trimmedSlug;
     } else {
-      // Generate a unique 6-character slug
-      let attempts = 0;
-      let generated = "";
-      while (attempts < 5) {
-        generated = generateRandomSlug(6);
-        const existing = await getLinkBySlug(generated);
-        if (!existing) {
-          slug = generated;
+      let created: UrlRecord | null = null;
+      for (let attempts = 0; attempts < 8; attempts++) {
+        try {
+          created = await createShortUrl(validatedUrl, generateRandomSlug(7), userId);
           break;
+        } catch (error) {
+          if (!isUniqueViolation(error)) throw error;
         }
-        attempts++;
       }
-      if (!slug) {
-        slug = generateRandomSlug(7);
+      if (!created) {
+        return NextResponse.json(
+          { success: false, message: "Unable to allocate a short link. Please try again." },
+          { status: 503 }
+        );
       }
+      newRecord = created;
     }
-
-    // 5. Check if user is logged in via JWT session cookie
-    const session = await getSession();
-    const userId = session ? session.userId : null;
-
-    // 6. Save link in DB
-    const newRecord = await createShortUrl(validatedUrl, slug, userId);
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://hiveuin.tech";
     const fullShortUrl = `${baseUrl.replace(/\/$/, "")}/${newRecord.short_slug}`;

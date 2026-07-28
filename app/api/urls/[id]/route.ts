@@ -27,7 +27,7 @@ export async function DELETE(req: Request, props: { params: Promise<{ id: string
     if (!deleted) {
       return NextResponse.json(
         { success: false, message: "Link not found or permission denied." },
-        { status: 444 }
+        { status: 404 }
       );
     }
 
