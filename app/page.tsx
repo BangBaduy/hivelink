@@ -548,8 +548,26 @@ export default function HiveApp() {
       <header className="sticky top-0 z-30 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-slate-200/80 transition-all">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between py-4">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-[#1E293B] flex items-center justify-center shadow-md shadow-slate-900/10">
-              <span className="text-emerald-400 font-extrabold text-xl tracking-wider">H!</span>
+            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 overflow-hidden relative group">
+              <img
+                src="/logo.png"
+                alt="HiVE!"
+                className="w-full h-full object-contain p-1"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.triedSvg) {
+                    target.dataset.triedSvg = "true";
+                    target.src = "/logo.svg";
+                  } else {
+                    target.style.display = "none";
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = "flex";
+                  }
+                }}
+              />
+              <div className="w-full h-full bg-slate-900 text-emerald-400 items-center justify-center font-extrabold text-xl tracking-wider hidden">
+                H!
+              </div>
             </div>
             <div>
               <div className="flex items-center space-x-2">
@@ -621,7 +639,7 @@ export default function HiveApp() {
             <form onSubmit={handleShortenUrl} className="space-y-4">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Globe className="w-5 h-5 text-slate-400" />
+                  <Link2 className="w-5 h-5 text-emerald-600" />
                 </div>
                 <input
                   type="text"
@@ -1514,8 +1532,24 @@ export default function HiveApp() {
       <footer className="mt-auto border-t border-slate-200 bg-white/60 py-8 text-slate-600 text-xs">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="w-6 h-6 rounded-md bg-slate-900 text-emerald-400 flex items-center justify-center text-xs font-bold">
-              H!
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-xs font-bold overflow-hidden">
+              <img
+                src="/logo.png"
+                alt="HiVE!"
+                className="w-full h-full object-contain p-0.5"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.triedSvg) {
+                    target.dataset.triedSvg = "true";
+                    target.src = "/logo.svg";
+                  } else {
+                    target.style.display = "none";
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = "flex";
+                  }
+                }}
+              />
+              <span className="hidden w-full h-full items-center justify-center bg-slate-900 text-emerald-400 font-bold text-xs">H!</span>
             </div>
             <span className="font-semibold text-slate-700">HiVE! &bull; HSC TI UIN JKT</span>
           </div>
