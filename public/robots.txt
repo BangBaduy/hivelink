@@ -1,0 +1,25 @@
+# https://hiveuin.tech/robots.txt
+# HiVE! URL Shortener & Link Management System
+# Production Robots & Crawler Directives
+
+User-agent: *
+Allow: /$
+Allow: /privacy
+Allow: /terms
+
+# Restrict Search Engine Crawling of Internal APIs & Authentication Routes
+Disallow: /api/
+Disallow: /api/*
+Disallow: /_next/
+Disallow: /static/
+
+# Prevent Crawlers from Indexing Dynamic Shortened Slugs & Redirect Slugs
+Disallow: /*?*
+Disallow: /*&
+
+# Rate limiting directive for respectful crawlers
+Crawl-delay: 10
+
+# Host & Sitemap Specification
+Host: https://hiveuin.tech
+Sitemap: https://hiveuin.tech/sitemap.xml

@@ -548,11 +548,11 @@ export default function HiveApp() {
       <header className="sticky top-0 z-30 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-slate-200/80 transition-all">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between py-4">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 overflow-hidden relative group">
+            <div className="w-11 h-11 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shadow-sm overflow-hidden relative group">
               <img
                 src="/logo.png"
                 alt="HiVE!"
-                className="w-full h-full object-contain p-1"
+                className="w-full h-full object-contain p-0.5"
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (!target.dataset.triedSvg) {
@@ -1532,7 +1532,7 @@ export default function HiveApp() {
       <footer className="mt-auto border-t border-slate-200 bg-white/60 py-8 text-slate-600 text-xs">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="w-7 h-7 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-xs font-bold overflow-hidden">
+            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200/80 flex items-center justify-center text-xs font-bold overflow-hidden shadow-sm">
               <img
                 src="/logo.png"
                 alt="HiVE!"
