@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import crypto from "node:crypto";
 
 import {
   generateRandomSlug,
@@ -96,7 +97,7 @@ test("Vercel client IP resolution ignores attacker-controlled proxy headers", ()
 });
 
 test("account link quota blocks a ninth active link", async () => {
-  const userId = `quota-user-${Date.now()}`;
+  const userId = crypto.randomUUID();
   for (let index = 0; index < 8; index++) {
     await createShortUrl(
       "https://example.com",
@@ -117,7 +118,7 @@ test("account link quota blocks a ninth active link", async () => {
 });
 
 test("destination edits require ownership and preserve link identity", async () => {
-  const ownerId = `edit-owner-${Date.now()}`;
+  const ownerId = crypto.randomUUID();
   const link = await createShortUrl(
     "https://example.com/original",
     `editable${Date.now()}`,
@@ -126,7 +127,7 @@ test("destination edits require ownership and preserve link identity", async () 
 
   const denied = await updateUserLinkDestination(
     link.id,
-    "different-owner",
+    crypto.randomUUID(),
     "https://example.com/unauthorized"
   );
   assert.equal(denied, null);
@@ -153,21 +154,18 @@ test("analytics never expose raw IPs and rotate visitor hashes daily", async () 
       referer: "https://example.edu/article?private=value",
     },
   });
-  const firstDay = buildPrivacySafeAnalyticsContext(
-    request,
-    new Date("2026-07-28T12:00:00Z")
-  );
-  const secondDay = buildPrivacySafeAnalyticsContext(
-    request,
-    new Date("2026-07-29T12:00:00Z")
-  );
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const firstDay = buildPrivacySafeAnalyticsContext(request, today);
+  const secondDay = buildPrivacySafeAnalyticsContext(request, yesterday);
+
   assert.equal(firstDay.countryCode, "ID");
   assert.equal(firstDay.device, "mobile");
   assert.equal(firstDay.referrerHost, "example.edu");
   assert.notEqual(firstDay.visitorHash, secondDay.visitorHash);
   assert.equal(JSON.stringify(firstDay).includes("203.0.113.42"), false);
 
-  const userId = `analytics-user-${Date.now()}`;
+  const userId = crypto.randomUUID();
   const link = await createShortUrl(
     "https://example.com",
     `analytics${Date.now()}`,
